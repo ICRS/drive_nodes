@@ -20,7 +20,7 @@ class JoyToSerial(Node):
             raise
 
         # Subscribe to /joy
-        self.timer = self.create_timer(1,self.read_serial_loop)
+        self.timer = self.create_timer(0.5,self.read_serial_loop)
         self.subscription = self.create_subscription(
             Joy,
             'joy',
@@ -87,7 +87,7 @@ class JoyToSerial(Node):
     def read_serial_loop(self):
         try:
             line = self.serial_port.readline().decode('utf-8').strip()
-
+            self.serial_port.flushInput()
             if not line:
                 return
 
