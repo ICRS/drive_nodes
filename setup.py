@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'drive = drive_nodes:drive.main'
+            'drive = drive_nodes.drive:main'
         ],
     },
 )
