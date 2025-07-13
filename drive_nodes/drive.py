@@ -79,7 +79,7 @@ class JoyToSerial(Node):
         try:
             self.serial_port.write(msg_l.encode('utf-8'))
             self.serial_port.write(msg_r.encode('utf-8'))
-            self.get_logger().info(f"Sent: {msg_l.strip()} {msg_r.strip()}")
+            # self.get_logger().info(f"Sent: {msg_l.strip()} {msg_r.strip()}")
         except serial.SerialException as e:
             self.get_logger().error(f"Serial write failed: {e}")
 
