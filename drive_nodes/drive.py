@@ -3,6 +3,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Joy
 import serial
 import time
+import re
 
 
 class JoyToSerial(Node):
@@ -19,6 +20,7 @@ class JoyToSerial(Node):
             raise
 
         # Subscribe to /joy
+        self.timer = self.create_timer(1,self.read_serial_loop)
         self.subscription = self.create_subscription(
             Joy,
             'joy',
@@ -80,6 +82,19 @@ class JoyToSerial(Node):
             self.get_logger().info(f"Sent: {msg_l.strip()} {msg_r.strip()}")
         except serial.SerialException as e:
             self.get_logger().error(f"Serial write failed: {e}")
+
+    
+    def read_serial_loop(self):
+        try:
+            line = self.serial_port.readline().decode('utf-8').strip()
+
+            if not line:
+                return
+
+            self.get_logger().info(f"{line}")
+
+        except Exception as e:
+            self.get_logger().warn(f"Serial read error: {e}")
 
     def destroy_node(self):
         super().destroy_node()
