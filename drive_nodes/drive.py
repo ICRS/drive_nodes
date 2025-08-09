@@ -5,6 +5,9 @@ import serial
 import time
 import re
 
+pattern = re.compile(r"<LC:([-+]?\d*\.\d+),([-+]?\d*\.\d+),([-+]?\d*\.\d+)>")
+
+
 
 class JoyToSerial(Node):
     def __init__(self):
@@ -12,7 +15,7 @@ class JoyToSerial(Node):
 
         # Setup serial connection
         try:
-            self.serial_port = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
+            self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
             time.sleep(2)
             self.get_logger().info("Serial port opened successfully.")
         except serial.SerialException as e:
