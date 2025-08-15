@@ -1,114 +1,94 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Joy
+from std_msgs.msg import Twist, Float32
 import serial
 import time
 import re
+import glob
+import threading
 
-pattern = re.compile(r"<LC:([-+]?\d*\.\d+),([-+]?\d*\.\d+),([-+]?\d*\.\d+)>")
+
+def constrain(val, min_val, max_val):
+    return min(max_val, max(min_val, val))
 
 
+class DriveNode(Node):
 
-class JoyToSerial(Node):
+    PATTERN_L_CURRENT = re.compile(r"<L_CURRENT:(\d+)>")
+    PATTERN_R_CURRENT = re.compile(r"<R_CURRENT:(\d+)>")
+
     def __init__(self):
-        super().__init__('joy_to_serial_node')
+        super().__init__('drive')
 
-        # Setup serial connection
-        try:
-            self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
-            time.sleep(2)
-            self.get_logger().info("Serial port opened successfully.")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to open serial port: {e}")
-            raise
+        # Setup ROS nodes
+        self.drive_sub = self.create_subscription(Twist, "drive/speed", self.update_speed, 10)
+        self.l_current_pub = self.create_publisher(Float32,"drive/l_current", 10)
+        self.r_current_pub = self.create_publisher(Float32,"drive/r_current", 10)
 
-        # Subscribe to /joy
-        self.timer = self.create_timer(0.5,self.read_serial_loop)
-        self.subscription = self.create_subscription(
-            Joy,
-            'joy',
-            self.joy_callback,
-            10
-        )
+        # Setup serial
+        ports = sorted(glob.glob('/dev/ttyACM*'))
+        if not ports:
+            self.get_logger().error("No /dev/ttyACM* devices found.")
+            raise RuntimeError("No ACM serial device found.")
+        self.serial = None
+        for port in ports:
+            try:
+                self.get_logger().info(f"Trying serial port: {port}")
+                self.serial = serial.Serial(port, 115200, timeout=1)
+                time.sleep(2)  # give device time to reset if needed
+                self.get_logger().info(f"Connected to {port}")
+                break
+            except serial.SerialException as e:
+                self.get_logger().warn(f"Failed to open {port}: {e}")
 
-    def scale(self, value, src_min, src_max, dst_min, dst_max):
-        src_range = src_max - src_min
-        dst_range = dst_max - dst_min
-        value_scaled = (value - src_min) / src_range
-        return dst_min + (value_scaled * dst_range)
+        # Start the thread to read serial messages from the ESP32
+        self.serial_read_thread = threading.Thread(target=self.serial_read, daemon=True)
+        self.serial_read_thread.start()
 
-    def clamp(self, value, min_value, max_value):
-        return max(min(value, max_value), min_value)
+    def serial_read(self):
+        buffer = ""
+        while rclpy.ok():
+            if self.serial.in_waiting:
+                buffer += self.serial.read(self.serial.in_waiting).decode(errors='ignore')
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
 
-    def apply_deadzone(self, value, threshold=0.1):
-        return 0.0 if abs(value) < threshold else value
+                    m = DriveNode.PATTERN_L_CURRENT.match(line)
+                    if m is not None:
+                        msg = Float32()
+                        msg.data = int(m.group(1)) / 1000  # mA to A
+                        self.l_current_pub.publish(msg)
+                        continue
 
-    def cubic_scaling(self, value, gain=1.0):
-        return gain * (value * abs(value))
+                    m = DriveNode.PATTERN_R_CURRENT.match(line)
+                    if m is not None:
+                        msg = Float32()
+                        msg.data = int(m.group(1)) / 1000  # mA to A
+                        self.r_current_pub.publish(msg)
+                        continue
 
-    def joy_callback(self, msg: Joy):
-        if len(msg.axes) < 2:
-            self.get_logger().warn("Not enough joystick axes received.")
-            return
+    def update_speed(self, msg: Twist):
 
-        axis_0 = msg.axes[0]  # Turn
-        axis_1 = msg.axes[1]  # Throttle
+        # Constrain the inputs
+        linear_velocity = constrain(float(msg.linear.x.data), -1, 1)
+        angular_velocity = constrain(float(msg.angular.z.data), 1, 1)
+        self.get_logger().info(f"Linear {linear_velocity}, turning {angular_velocity}")
 
-        throttle = -axis_1
-        turn = axis_0
+        # Convert into the data that will be sent over the wire
+        linear = int(constrain(linear_velocity * 255, -255, 255))
+        angular = int(constrain(linear_velocity * 255, -255, 255))
 
-        throttle = self.apply_deadzone(throttle)
-        turn = self.apply_deadzone(turn)
-
-        throttle = self.cubic_scaling(throttle, gain=1.0)
-        turn = self.cubic_scaling(turn, gain=0.8)
-
-        left_motor = throttle + turn
-        right_motor = throttle - turn
-
-        max_mag = max(abs(left_motor), abs(right_motor), 1.0)
-        left_motor /= max_mag
-        right_motor /= max_mag
-
-        left_pwm = int(self.scale(left_motor, -1, 1, -255, 255))
-        right_pwm = int(self.scale(right_motor, -1, 1, -255, 255))
-
-        left_pwm = self.clamp(left_pwm, -255, 255)
-        right_pwm = self.clamp(right_pwm, -255, 255)
-
-        msg_l = f"<MOTOR_L: {left_pwm}>\n"
-        msg_r = f"<MOTOR_R: {right_pwm}>\n"
-
-        try:
-            self.serial_port.write(msg_l.encode('utf-8'))
-            self.serial_port.write(msg_r.encode('utf-8'))
-            # self.get_logger().info(f"Sent: {msg_l.strip()} {msg_r.strip()}")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Serial write failed: {e}")
-
-    
-    def read_serial_loop(self):
-        try:
-            line = self.serial_port.readline().decode('utf-8').strip()
-            self.serial_port.flushInput()
-            if not line:
-                return
-
-            self.get_logger().info(f"{line}")
-
-        except Exception as e:
-            self.get_logger().warn(f"Serial read error: {e}")
-
-    def destroy_node(self):
-        super().destroy_node()
-        if self.serial_port.is_open:
-            self.serial_port.close()
-            self.get_logger().info("Serial port closed.")
+        # Create and send the message
+        out = f"<LINEAR:{linear}>\n"
+        out += f"<ANGULAR:{angular}>\n"
+        out_bytes = bytes(out.encode("utf-8"))
+        self.serial.write(out_bytes)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = JoyToSerial()
+    node = DriveNode()
 
     try:
         rclpy.spin(node)
