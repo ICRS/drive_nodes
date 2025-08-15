@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Twist, Float32
+from std_msgs.msg import Float32
+from geometry_msgs.msg import Twist
 import serial
 import time
 import re
@@ -26,7 +27,7 @@ class DriveNode(Node):
         self.r_current_pub = self.create_publisher(Float32,"drive/r_current", 10)
 
         # Setup serial
-        ports = sorted(glob.glob('/dev/ttyACM*'))
+        ports = sorted(glob.glob('/dev/ttyUSB*'))
         if not ports:
             self.get_logger().error("No /dev/ttyACM* devices found.")
             raise RuntimeError("No ACM serial device found.")
@@ -68,20 +69,23 @@ class DriveNode(Node):
                         self.r_current_pub.publish(msg)
                         continue
 
+                    self.get_logger().info(f"Drive board: '{line}'")
+
     def update_speed(self, msg: Twist):
 
         # Constrain the inputs
-        linear_velocity = constrain(float(msg.linear.x.data), -1, 1)
-        angular_velocity = constrain(float(msg.angular.z.data), 1, 1)
+        linear_velocity = constrain(float(msg.linear.x), -1, 1)
+        angular_velocity = constrain(float(msg.angular.z), -1, 1)
         self.get_logger().info(f"Linear {linear_velocity}, turning {angular_velocity}")
 
         # Convert into the data that will be sent over the wire
         linear = int(constrain(linear_velocity * 255, -255, 255))
-        angular = int(constrain(linear_velocity * 255, -255, 255))
+        angular = int(constrain(angular_velocity * 255, -255, 255))
 
         # Create and send the message
         out = f"<LINEAR:{linear}>\n"
         out += f"<ANGULAR:{angular}>\n"
+        self.get_logger().info(f"\nSending:\n{out}\n")
         out_bytes = bytes(out.encode("utf-8"))
         self.serial.write(out_bytes)
 
