@@ -32,19 +32,58 @@ class DriveNode(Node):
             self.get_logger().error("No /dev/ttyACM* devices found.")
             raise RuntimeError("No ACM serial device found.")
         self.serial = None
-        for port in ports:
-            try:
-                self.get_logger().info(f"Trying serial port: {port}")
-                self.serial = serial.Serial(port, 115200, timeout=1)
-                time.sleep(2)  # give device time to reset if needed
-                self.get_logger().info(f"Connected to {port}")
-                break
-            except serial.SerialException as e:
-                self.get_logger().warn(f"Failed to open {port}: {e}")
+
+        # Get the port
+        connected = False
+        while not connected:
+            for port in ports:
+                try:
+                    self.get_logger().info(f"Trying serial port: {port}")
+                    self.serial = serial.Serial(port, 115200, timeout=1)
+                    time.sleep(2)  # give device time to reset if needed
+                    self.get_logger().info(f"Connected to {port}")
+                    break
+                except serial.SerialException as e:
+                    self.get_logger().warn(f"Failed to open {port}: {e}")
+
+            # Ping the device to check it responds
+            connected = self.serial_ping()
 
         # Start the thread to read serial messages from the ESP32
         self.serial_read_thread = threading.Thread(target=self.serial_read, daemon=True)
         self.serial_read_thread.start()
+
+    def serial_ping(self) -> bool:
+
+        # Send PING
+        out = "<PING:1>\n"
+        self.get_logger().info("Sending PING")
+        out_bytes = bytes(out.encode("utf-8"))
+        self.serial.write(out_bytes)
+
+        # Wait for PONG
+        buffer = ""
+        start_time = time.time()
+        pong_received = False
+        while not pong_received:
+            if self.serial.in_waiting:
+                buffer += self.serial.read(self.serial.in_waiting).decode(errors='ignore')
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    if "PONG" in line:
+                        pong_received = True
+                        break
+
+            # Timeout
+            if (time.time() > (start_time + 1.0)) and not pong_received:
+                break
+
+        if pong_received:
+            self.get_logger().info("Received PONG")
+        else:
+            self.get_logger().info("PING timed out")
+        return pong_received
 
     def serial_read(self):
         buffer = ""
