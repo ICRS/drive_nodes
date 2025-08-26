@@ -46,8 +46,16 @@ class DriveNode(Node):
                 except serial.SerialException as e:
                     self.get_logger().warn(f"Failed to open {port}: {e}")
 
+            if self.serial is None:
+                self.get_logger().info("Couldn't get serial port")
+                time.sleep(1)
+                continue
+
             # Ping the device to check it responds
             connected = self.serial_ping()
+
+            if not connected:
+                self.serial.close()
 
         # Start the thread to read serial messages from the ESP32
         self.serial_read_thread = threading.Thread(target=self.serial_read, daemon=True)
@@ -57,17 +65,27 @@ class DriveNode(Node):
 
     def serial_ping(self) -> bool:
 
-        # Send PING
-        out = "<PING:1>\n"
-        self.get_logger().info("Sending PING")
-        out_bytes = bytes(out.encode("utf-8"))
-        self.serial.write(out_bytes)
-
-        # Wait for PONG
         buffer = ""
         start_time = time.time()
         pong_received = False
         while not pong_received:
+
+            # Timeout
+            if (time.time() > (start_time + 3.0)) and not pong_received:
+                break
+
+            # Send PING
+            out = "<PING:1>\n"
+            out_bytes = bytes(out.encode("utf-8"))
+            try:
+                self.serial.write(out_bytes)
+                self.get_logger().info("Sent PING")
+            except serial.serialutil.SerialException:
+                continue
+
+            time.sleep(0.1)
+
+            # Wait for PONG
             if self.serial.in_waiting:
                 buffer += self.serial.read(self.serial.in_waiting).decode(errors='ignore')
                 while '\n' in buffer:
@@ -76,10 +94,6 @@ class DriveNode(Node):
                     if "PONG" in line:
                         pong_received = True
                         break
-
-            # Timeout
-            if (time.time() > (start_time + 1.0)) and not pong_received:
-                break
 
         if pong_received:
             self.get_logger().info("Received PONG")
@@ -141,6 +155,10 @@ class DriveNode(Node):
         self.get_logger().info(f"\nSending:\n{out}\n")
         out_bytes = bytes(out.encode("utf-8"))
         self.serial.write(out_bytes)
+
+    def destroy_node(self):
+        self.serial.close()
+        super().destroy_node()
 
 
 def main(args=None):
