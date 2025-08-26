@@ -53,6 +53,8 @@ class DriveNode(Node):
         self.serial_read_thread = threading.Thread(target=self.serial_read, daemon=True)
         self.serial_read_thread.start()
 
+        self.current_limit_sub = self.create_subscription(Float32, "drive/current_limit", self.update_current_limit, 10)
+
     def serial_ping(self) -> bool:
 
         # Send PING
@@ -124,6 +126,18 @@ class DriveNode(Node):
         # Create and send the message
         out = f"<LINEAR:{linear}>\n"
         out += f"<ANGULAR:{angular}>\n"
+        self.get_logger().info(f"\nSending:\n{out}\n")
+        out_bytes = bytes(out.encode("utf-8"))
+        self.serial.write(out_bytes)
+
+    def update_current_limit(self, msg: Float32):
+
+        # Convert the current limit to mA:
+        current_limit = int(abs(msg.data * 1000.0))
+        current_limit = constrain(current_limit, 0, 19_000)  # Maximum current limit is 19A (sensors measure up to 20A, but if that was the limit then we can't detect if its been crossed)
+
+        # Create and send the message
+        out = f"<I_LIMIT:{current_limit}>\n"
         self.get_logger().info(f"\nSending:\n{out}\n")
         out_bytes = bytes(out.encode("utf-8"))
         self.serial.write(out_bytes)

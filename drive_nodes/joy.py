@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Bool
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Joy
 import serial
@@ -8,6 +8,7 @@ import time
 import re
 import glob
 import threading
+from math import sqrt
 
 
 def constrain(val, min_val, max_val):
@@ -21,16 +22,50 @@ class JoyNode(Node):
 
         # Setup ROS nodes
         self.drive_pub = self.create_publisher(Twist, "drive/speed", 10)
-        self.joy_sub = self.create_subscription(Joy,"drive/joy", self.joy_receive, 10)
+        self.joy_sub = self.create_subscription(Joy, "drive/joy", self.joy_receive, 10)
+
+        self.camera_pub = self.create_publisher(Bool, "camera/capture", 10)
+        self.previous_camera_trigger = False
+
+        self.current_limit_pub = self.create_publisher(Float32, "drive/current_limit", 10)
+        self.current_limit_changed = False
 
     def joy_receive(self, rx_msg: Joy):
 
+        # Send drive control signals
         tx_msg = Twist()
-
         tx_msg.angular.z = constrain(-rx_msg.axes[0], -1.0, 1.0)
-        tx_msg.linear.x = constrain(rx_msg.axes[1], -1.0, 1.0)
+
+        multiplier = (rx_msg.axes[2] + 2.0)  # Remap -1 to 1 into 1 to 3
+        sign = rx_msg.axes[1] / abs(rx_msg.axes[1]) if rx_msg.axes[1] != 0.0 else 1
+        tx_msg.linear.x = constrain(multiplier * sign * sqrt(abs(rx_msg.axes[1])), -1.0, 1.0)
 
         self.drive_pub.publish(tx_msg)
+
+
+        # Send the camera capture message
+        current_camera_trigger = bool(rx_msg.buttons[0])
+
+        if current_camera_trigger and not self.previous_camera_trigger:
+            tx_msg = Bool()
+            tx_msg.data = True
+            self.camera_pub.publish(tx_msg)
+
+        self.previous_camera_trigger = current_camera_trigger
+
+
+        # Send the updated current limit
+        new_current_limit_change = bool(rx_msg.buttons[2]) or bool(rx_msg.buttons[3])
+
+        if new_current_limit_change and not self.current_limit_changed:
+            tx_msg = Float32()
+            if rx_msg.buttons[2]:
+                tx_msg.data = 10.0
+            else:
+                tx_msg.data = 19.0
+            self.current_limit_pub.publish(tx_msg)
+
+        self.current_limit_changed = new_current_limit_change
 
 
 def main(args=None):
