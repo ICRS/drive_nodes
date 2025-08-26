@@ -36,5 +36,5 @@ Messages are sent over ROS2 in amps, and then converted to mA and sent over seri
 To start the joy node, run the following command:
 
 ```bash
-ros2 run joy joy_node --ros-args --remap joy:=drive/joy
+ros2 run joy joy_node --ros-args --remap __node:=drive_joy_node -r /joy:=/drive/joy
 ```
