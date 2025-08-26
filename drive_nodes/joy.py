@@ -62,7 +62,7 @@ class JoyNode(Node):
             if rx_msg.buttons[2]:
                 tx_msg.data = 10.0
             else:
-                tx_msg.data = 19.0
+                tx_msg.data = 18.0
             self.current_limit_pub.publish(tx_msg)
 
         self.current_limit_changed = new_current_limit_change

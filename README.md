@@ -8,7 +8,7 @@ The data is then scaled between -255 and 255 and sent over serial in messages li
 
 ## Joystick
 
-### Topics
+### Speed
 
 The `drive_joy` node receives `Joy` messages and converts them to `Twist` messages for the drive node (described above):
 
@@ -16,14 +16,20 @@ The `drive_joy` node receives `Joy` messages and converts them to `Twist` messag
 * Second axis = forward (forwards = positive)
 * Third axis = multiplier (-1 to 1, remapped onto 1x to 3x)
 
+### Camera
+
 It also posts a `Bool` to the `camera/capture` topic photos when the main (index finger) trigger is pressed:
 
 * Button 1 (1 = pressed, 0 = released)
+
+### Current limiting
 
 The per-side current limit can be changed with the left and right thumb buttons:
 
 * Button 3 (left) (1 = pressed, 0 = released): 10A current limit
 * Button 4 (right) (1 = pressed, 0 = released): ~19A current limit (max)
+
+Messages are sent over ROS2 in amps, and then converted to mA and sent over serial in the format `<I_LIMIT:10000>`.
 
 ### Start
 
