@@ -17,11 +17,11 @@ def constrain(val, min_val, max_val):
 class JoyNode(Node):
 
     def __init__(self):
-        super().__init__('joy')
+        super().__init__('drive_joy')
 
         # Setup ROS nodes
         self.drive_pub = self.create_publisher(Twist, "drive/speed", 10)
-        self.joy_sub = self.create_subscription(Joy,"joy", self.joy_receive, 10)
+        self.joy_sub = self.create_subscription(Joy,"drive/joy", self.joy_receive, 10)
 
     def joy_receive(self, rx_msg: Joy):
 
