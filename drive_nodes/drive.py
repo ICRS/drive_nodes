@@ -107,18 +107,15 @@ class DriveNode(Node):
 
                         # PONG contained invalid ID
                         if device_id != 69:
-                            self.get_logger().info(f"Incorrect ID: '{device_id}'")
+                            self.get_logger().info(f"Received PONG, incorrect ID: '{device_id}'")
                             return pong_received
 
                         # PONG containted correct ID
                         else:
                             pong_received = True
-                            break
+                            self.get_logger().info(f"Received PONG, correct ID: '{device_id}'")
+                            return pong_received
 
-        if pong_received:
-            self.get_logger().info("Received PONG")
-        else:
-            self.get_logger().info("PING timed out")
         return pong_received
 
     def serial_read(self):
