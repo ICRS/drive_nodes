@@ -37,7 +37,7 @@ class JoyNode(Node):
         tx_msg = Twist()
 
         # Set the angular velocity
-        sign = 1.0 if rx_msg.axes[1] > 0.0 else -1.0
+        sign = 1.0 if rx_msg.axes[0] > 0.0 else -1.0
         if abs(rx_msg.axes[0]) < 0.07:  # Deadzone
             tx_msg.angular.z = 0.0
         else:
