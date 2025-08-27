@@ -17,6 +17,7 @@ class DriveNode(Node):
 
     PATTERN_L_CURRENT = re.compile(r"<L_CURRENT:(\d+)>")
     PATTERN_R_CURRENT = re.compile(r"<R_CURRENT:(\d+)>")
+    PATTERN_PONG      = re.compile(r"<PONG:(\d+)>")
 
     def __init__(self):
         super().__init__('drive')
@@ -42,20 +43,26 @@ class DriveNode(Node):
                     self.serial = serial.Serial(port, 115200, timeout=1)
                     time.sleep(2)  # give device time to reset if needed
                     self.get_logger().info(f"Connected to {port}")
-                    break
                 except serial.SerialException as e:
                     self.get_logger().warn(f"Failed to open {port}: {e}")
 
-            if self.serial is None:
-                self.get_logger().info("Couldn't get serial port")
-                time.sleep(1)
-                continue
+                # Check the serial port is okay
+                if self.serial is None:
+                    self.get_logger().info("Couldn't get serial port")
+                    time.sleep(1)
+                    continue
 
-            # Ping the device to check it responds
-            connected = self.serial_ping()
+                # Ping the device to check it responds and has the correct ID
+                connected = self.serial_ping()
 
-            if not connected:
-                self.serial.close()
+                # Invalid device: close the connection and try the next device
+                if not connected:
+                    self.serial.close()
+                    continue
+
+                # Valid device: move on
+                else:
+                    break
 
         # Start the thread to read serial messages from the ESP32
         self.serial_read_thread = threading.Thread(target=self.serial_read, daemon=True)
@@ -83,7 +90,7 @@ class DriveNode(Node):
             except serial.serialutil.SerialException:
                 continue
 
-            time.sleep(0.1)
+            time.sleep(0.2)
 
             # Wait for PONG
             if self.serial.in_waiting:
@@ -91,9 +98,22 @@ class DriveNode(Node):
                 while '\n' in buffer:
                     line, buffer = buffer.split('\n', 1)
                     line = line.strip()
-                    if "PONG" in line:
-                        pong_received = True
-                        break
+
+                    # Check if the message is a PONG
+                    m = DriveNode.PATTERN_PONG.match(line)
+                    if m is not None:
+
+                        device_id = int(m.group(1))
+
+                        # PONG contained invalid ID
+                        if device_id != 69:
+                            self.get_logger().info(f"Incorrect ID: '{device_id}'")
+                            return pong_received
+
+                        # PONG containted correct ID
+                        else:
+                            pong_received = True
+                            break
 
         if pong_received:
             self.get_logger().info("Received PONG")
