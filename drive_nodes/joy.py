@@ -35,17 +35,17 @@ class JoyNode(Node):
         ############ Send drive control signals ############
 
         tx_msg = Twist()
+        multiplier = ((1 - rx_msg.axes[2]) * (2/5) + 0.2)  # Remap -1 to 1 into 1 to 0.2
 
         # Set the angular velocity
         sign = -1.0 if rx_msg.axes[0] > 0.0 else 1.0
         if abs(rx_msg.axes[0]) < 0.07:  # Deadzone
             tx_msg.angular.z = 0.0
         else:
-            tx_msg.angular.z = constrain(e**(3.0 * abs(rx_msg.axes[0])) / 19, -1.0, 1.0)
+            tx_msg.angular.z = constrain(multiplier * e**(3.0 * abs(rx_msg.axes[0])) / 19, -1.0, 1.0)
             tx_msg.angular.z = sign * tx_msg.angular.z
 
         # Set the linear velocity
-        multiplier = (rx_msg.axes[2] + 2.0)  # Remap -1 to 1 into 1 to 3
         sign = 1.0 if rx_msg.axes[1] > 0.0 else -1.0
 
         if abs(rx_msg.axes[1]) < 0.07: # Deadzone
