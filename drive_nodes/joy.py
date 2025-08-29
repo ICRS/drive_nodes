@@ -37,6 +37,7 @@ class JoyNode(Node):
         self.previous_brush_state_out = False
         self.previous_brush_state_in = False
         self.payload_pub = self.create_publisher(Bool, "drill/step_payload", 1)  # True = forward
+        self.last_payload_step: float = 0
         self.drill_pub   = self.create_publisher(Float32, "drill/set_drill", 1)
         self.previous_drill_state = False
 
@@ -119,16 +120,24 @@ class JoyNode(Node):
 
             ############ Move the drill payload ############
 
-            # Move out
-            if rx_msg.axes[5] > 0.5:
-                tx_msg = Bool()
-                tx_msg.data = True
-                self.payload_pub.publish(tx_msg)
-            elif rx_msg.axes[5] < -0.5:
-                tx_msg = Bool()
-                tx_msg.data = False
-                self.payload_pub.publish(tx_msg)
+            current_time = time.time()
 
+            if current_time > (self.last_payload_step + 0.5):
+
+                # Move out
+                if rx_msg.axes[5] > 0.5:
+                    tx_msg = Bool()
+                    tx_msg.data = True
+                    self.payload_pub.publish(tx_msg)
+                    self.last_payload_step = current_time
+
+                # Move in
+                elif rx_msg.axes[5] < -0.5:
+                    tx_msg = Bool()
+                    tx_msg.data = False
+                    self.payload_pub.publish(tx_msg)
+                    self.last_payload_step = current_time
+                
             ############ Spin the drill ############
 
             current_drill_state = bool(rx_msg.buttons[1])
