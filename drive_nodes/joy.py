@@ -22,13 +22,26 @@ class JoyNode(Node):
 
         # Setup ROS nodes
         self.drive_pub = self.create_publisher(Twist, "drive/speed", 10)
-        self.joy_sub = self.create_subscription(Joy, "drive/joy", self.joy_receive, 10)
+        self.joy_sub   = self.create_subscription(Joy, "drive/joy", self.joy_receive, 10)
 
         self.camera_pub = self.create_publisher(Bool, "camera/capture", 10)
         self.previous_camera_trigger = False
 
-        self.current_limit_pub = self.create_publisher(Float32, "drive/current_limit", 10)
+        self.current_limit_pub     = self.create_publisher(Float32, "drive/current_limit", 10)
         self.current_limit_changed = False
+
+        # Drill extras
+        self.drill_in_progress = False  # Set when a sequence is happening to prevent interruption
+        self.drill_in_progress_sub = self.create_subscription(Bool,"drill/in_progress", self.set_drill_in_progress 1)
+        self.brush_pub   = self.create_publisher(Bool, "drill/set_brush", 1)  # True = extend
+        self.previous_brush_state_out = False
+        self.previous_brush_state_in = False
+        self.payload_pub = self.create_publisher(Bool, "drill/step_payload", 1)  # True = forward
+        self.drill_pub   = self.create_publisher(Float32, "drill/set_drill", 1)
+        self.previous_drill_state = False
+
+    def set_drill_in_progress(self, msg: Bool):
+        self.drill_in_progress = msg.data
 
     def joy_receive(self, rx_msg: Joy):
 
@@ -81,6 +94,55 @@ class JoyNode(Node):
 
         self.current_limit_changed = new_current_limit_change
 
+
+        if not self.drill_in_progress:
+
+            ############ Set the drill brush ############
+
+            # Retract
+            if rx_msg.buttons[4] and not self.previous_brush_state_in:
+                tx_msg = Bool()
+                tx_msg.data = False
+                self.brush_pub.publish(tx_msg)
+                self.previous_brush_state_in = True
+            else:
+                self.previous_brush_state_in = False;
+
+            if rx_msg.buttons[5] and not self.previous_brush_state_out:
+                tx_msg = Bool()
+                tx_msg.data = True
+                self.brush_pub.publish(tx_msg)
+                self.previous_brush_state_out = True;
+            else:
+                self.previous_brush_state_out = False;
+
+            ############ Move the drill payload ############
+
+            # Move out
+            if rx_msg.axes[5] > 0.5:
+                tx_msg = Bool()
+                tx_msg.data = True
+                self.payload_pub.publish(tx_msg)
+            elif rx_msg.axes[5] < -0.5:
+                tx_msg = Bool()
+                tx_msg.data = False
+                self.payload_pub.publish(tx_msg)
+
+            ############ Spin the drill ############
+
+            current_drill_state = bool(rx_msg.buttons[1])
+
+            if current_drill_state and not self.previous_drill_state:
+                tx_msg = Float32()
+                tx_msg.data = 3.0
+                self.drill_pub.publish(tx_msg)
+
+            elif not current_drill_state and self.previous_drill_state:
+                tx_msg = Float32()
+                tx_msg.data = 0.0
+                self.drill_pub.publish(tx_msg)
+
+            self.previous_drill_state = current_drill_state
 
 def main(args=None):
     rclpy.init(args=args)
