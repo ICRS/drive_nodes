@@ -32,7 +32,7 @@ class JoyNode(Node):
 
         # Drill extras
         self.drill_in_progress = False  # Set when a sequence is happening to prevent interruption
-        self.drill_in_progress_sub = self.create_subscription(Bool,"drill/in_progress", self.set_drill_in_progress 1)
+        self.drill_in_progress_sub = self.create_subscription(Bool,"drill/in_progress", self.set_drill_in_progress, 1)
         self.brush_pub   = self.create_publisher(Bool, "drill/set_brush", 1)  # True = extend
         self.previous_brush_state_out = False
         self.previous_brush_state_in = False
@@ -99,22 +99,23 @@ class JoyNode(Node):
 
             ############ Set the drill brush ############
 
+            current_brush_state_in = bool(rx_msg.buttons[4])
+            current_brush_state_out = bool(rx_msg.buttons[5])
+
             # Retract
-            if rx_msg.buttons[4] and not self.previous_brush_state_in:
+            if current_brush_state_in and not self.previous_brush_state_in:
                 tx_msg = Bool()
                 tx_msg.data = False
-                self.brush_pub.publish(tx_msg)
-                self.previous_brush_state_in = True
-            else:
-                self.previous_brush_state_in = False;
+                self.brush_pub.publish(tx_msg)  
 
-            if rx_msg.buttons[5] and not self.previous_brush_state_out:
+             # Extend
+            elif current_brush_state_out and not self.previous_brush_state_out:
                 tx_msg = Bool()
                 tx_msg.data = True
                 self.brush_pub.publish(tx_msg)
-                self.previous_brush_state_out = True;
-            else:
-                self.previous_brush_state_out = False;
+
+            self.previous_brush_state_in = current_brush_state_in
+            self.previous_brush_state_out = current_brush_state_out
 
             ############ Move the drill payload ############
 
