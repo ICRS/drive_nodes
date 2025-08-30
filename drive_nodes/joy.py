@@ -144,7 +144,7 @@ class JoyNode(Node):
 
             if current_drill_state and not self.previous_drill_state:
                 tx_msg = Float32()
-                tx_msg.data = 3.0
+                tx_msg.data = -3.0
                 self.drill_pub.publish(tx_msg)
 
             elif not current_drill_state and self.previous_drill_state:
